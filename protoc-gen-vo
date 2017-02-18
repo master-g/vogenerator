@@ -129,6 +129,9 @@ class Field:
         self.default = None
         self.jtype = None
 
+        if self.name == '':
+            self.name = desc.name
+
         if desc.HasField('default_value'):
             self.default = desc.default_value
 
@@ -634,14 +637,15 @@ def main_plugin():
     data = sys.stdin.read()
     request = plugin_pb2.CodeGeneratorRequest.FromString(data)
 
-    # data = open("live", "r")
+    # data = open("hello", "r")
     # request = plugin_pb2.CodeGeneratorRequest.FromString(data.read())
 
     # data = sys.stdin.read()
-    # target = open("live", "w")
+    # target = open("hello", "w")
     # target.write(data)
     # target.flush()
     # target.close()
+    # request = plugin_pb2.CodeGeneratorRequest.FromString(data)
 
     try:
         # Versions of Python prior to 2.7.3 do not support unicode
