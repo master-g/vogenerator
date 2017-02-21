@@ -8,6 +8,7 @@ enum Greeting {
 message Hello {
     required Greeting greeting = 1;
     required string name = 2;
+    optional bytes sig = 3;
 }
 
 message World {
