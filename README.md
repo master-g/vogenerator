@@ -4,6 +4,7 @@ Protobuf plugin for compile proto file into Java Value Objects
 ## Example
 
 ```protobuf
+// Hello.proto
 enum Greeting {
     NONE = 0;
     MR = 1;
@@ -20,9 +21,8 @@ message Hello {
 
 will generate 2 files
 
-`Greeting.java`
-
 ```java
+// Greeting.java
 public enum Greeting {
 
     NONE(0),
@@ -44,9 +44,10 @@ public enum Greeting {
 }
 ```
 
-`Hello.java`
+and
 
 ```java
+// Hello.java
 public class Hello {
     public Greeting greeting;
     public String name;
@@ -62,8 +63,6 @@ public class Hello {
     }
 }
 ```
-
-
 
 ## Usage
 
