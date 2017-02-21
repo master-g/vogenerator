@@ -1,5 +1,69 @@
 # vogenerator
-Protobuf plugin for compile proto file to Java Value Objects
+Protobuf plugin for compile proto file into Java Value Objects
+
+## Example
+
+```protobuf
+enum Greeting {
+    NONE = 0;
+    MR = 1;
+    MRS = 2;
+    MISS = 3;
+}
+
+message Hello {
+    required Greeting greeting = 1;
+    required string name = 2;
+    optional bytes sig = 3;
+}
+```
+
+will generate 2 files
+
+`Greeting.java`
+
+```java
+public enum Greeting {
+
+    NONE(0),
+    MR(1),
+    MRS(2),
+    MISS(3),
+    UNKNOWN(-1);
+
+    public int code;
+
+    Greeting(int code) { this.code = code; }
+
+    public static Greeting valueOf(final int code) {
+        for (Greeting c : Greeting.values()) {
+            if (code == c.code) return c;
+        }
+        return UNKNOWN;
+    }
+}
+```
+
+`Hello.java`
+
+```java
+public class Hello {
+    public Greeting greeting;
+    public String name;
+    public byte[] sig;
+
+    @Override
+    public String toString() {
+        return "Hello{" +
+               "greeting=" + greeting +
+               ", name='" + name + '\'' +
+               ", sig=" + Arrays.toString(sig) +
+               '}';
+    }
+}
+```
+
+
 
 ## Usage
 
