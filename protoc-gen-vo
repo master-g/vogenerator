@@ -1,15 +1,16 @@
 #!/usr/bin/env python
 
-'''Generate Java source file for VO from a ProtoBuf FileDescriptorSet.'''
-import time
-
-vo_version = "vo-0.2-dev (c) 2017 MG"
-
 import sys
+import time
+import os.path
+
+'''Generate Java source file for VO from a ProtoBuf FileDescriptorSet.'''
+vo_version = "vo-0.3-dev (c) 2017 MG"
 
 try:
     # Add some dummy imports to keep packaging tools happy
-    import google, distutils.util  # bbfreeze seems to need these
+    import google
+    import distutils.util  # bbfreeze seems to need these
     import pkg_resources  # pyinstaller / protobuf 2.5 seem to need these
 except:
     # Don't care, we will error out later if it is actually important.
@@ -39,7 +40,7 @@ class Globals:
     verbose_options = False
     separate_options = []
     matched_namemasks = set()
-    output_package = "com.mico.model.vo.live"
+    output_package = "com.mico.model.vo."
 
 # ---------------------------------------------------------------------------
 #                     Generation of single fields
@@ -92,7 +93,8 @@ class Names:
 def names_from_type_name(type_name):
     '''Parse Names() from FieldDescriptorProto type_name'''
     if type_name[0] != '.':
-        raise NotImplementedError("Lookup of non-absolute type names is not supported")
+        raise NotImplementedError(
+            "Lookup of non-absolute type names is not supported")
     return Names(type_name[1:].split('.'))
 
 
@@ -104,10 +106,13 @@ def process_enum_value_name(value_name):
 
 
 class Enum:
-    def __init__(self, desc):
+
+    def __init__(self, desc, pkg):
         '''desc is EnumDescriptorProto'''
         self.name = desc.name
-        self.values = [(process_enum_value_name(x.name), x.number) for x in desc.value]
+        self.package = pkg
+        self.values = [(process_enum_value_name(x.name), x.number)
+                       for x in desc.value]
 
     def __str__(self):
         enumname = self.name
@@ -121,8 +126,10 @@ class Enum:
         result += ',\n'.join(["    %s(%d)" % x for x in self.values])
         result += ',\n    %s(%d);' % (invalidname, invalidvalue)
         result += '\n\n    public int %s;\n\n' % code
-        result += '    %s(int %s) { this.%s = %s; }\n\n' % (enumname, code, code, code)
-        result += '    public static %s valueOf(final int %s) {\n' % (enumname, code)
+        result += '    %s(int %s) { this.%s = %s; }\n\n' % (enumname,
+                                                            code, code, code)
+        result += '    public static %s valueOf(final int %s) {\n' % (
+            enumname, code)
         result += '        for (%s c : %s.values()) {\n' % (enumname, enumname)
         result += '            if (%s == c.%s) return c;\n' % (code, code)
         result += '        }\n'
@@ -134,6 +141,7 @@ class Enum:
 
 
 class Field:
+
     def __init__(self, struct_name, desc):
         '''desc is FieldDescriptorProto'''
         self.tag = desc.number
@@ -159,7 +167,7 @@ class Field:
             raise NotImplementedError(desc.label)
 
         # Decide the Java data type to use in the class.
-        if datatypes.has_key(desc.type):
+        if desc.type in datatypes.keys():
             self.jtype, self.pbtype = datatypes[desc.type]
         elif desc.type == FieldD.TYPE_ENUM:
             self.pbtype = 'ENUM'
@@ -222,6 +230,7 @@ class Field:
 
 
 class ExtensionRange(Field):
+
     def __init__(self, struct_name, range_start):
         '''Implements a special pb_extension_t* field in an extensible message
             structure. The range_start signifies the index at which the extensions
@@ -251,6 +260,7 @@ class ExtensionRange(Field):
 
 
 class ExtensionField(Field):
+
     def __init__(self, struct_name, desc, field_options):
         self.fullname = struct_name + desc.name
         self.extendee_name = names_from_type_name(desc.extendee)
@@ -301,6 +311,7 @@ class ExtensionField(Field):
 # ---------------------------------------------------------------------------
 
 class OneOf(Field):
+
     def __init__(self, struct_name, oneof_desc):
         self.struct_name = struct_name
         self.name = oneof_desc.name
@@ -312,8 +323,8 @@ class OneOf(Field):
 
     def add_field(self, field):
         if field.allocation == 'CALLBACK':
-            raise Exception("Callback fields inside of oneof are not supported"
-                            + " (field %s)" % field.name)
+            raise Exception(
+                "Callback fields inside of oneof are not supported (field %s)" % field.name)
 
         field.union_name = self.name
         field.rules = 'ONEOF'
@@ -355,7 +366,8 @@ class OneOf(Field):
         return '\n'.join([f.tags() for f in self.fields])
 
     def pb_field_t(self, prev_field_name):
-        result = ',\n'.join([f.pb_field_t(prev_field_name) for f in self.fields])
+        result = ',\n'.join([f.pb_field_t(prev_field_name)
+                             for f in self.fields])
         return result
 
     def largest_field_value(self):
@@ -368,8 +380,10 @@ class OneOf(Field):
 
 
 class Message:
-    def __init__(self, names, desc):
+
+    def __init__(self, names, desc, pkg):
         self.name = names
+        self.package = pkg
         self.shouldimportlist = False
         self.shouldimportarray = False
         self.fields = []
@@ -387,8 +401,7 @@ class Message:
             self.shouldimportlist = field.shouldimportlist()
             self.shouldimportarray = field.shouldimportarray()
             if (hasattr(f, 'oneof_index') and
-                    f.HasField('oneof_index') and
-                        f.oneof_index not in no_unions):
+                    f.HasField('oneof_index') and f.oneof_index not in no_unions):
                 if f.oneof_index in self.oneofs:
                     self.oneofs[f.oneof_index].add_field(field)
             else:
@@ -462,11 +475,13 @@ class Message:
         return count
 
     def fields_declaration(self):
-        result = 'extern const pb_field_t %s_fields[%d];' % (self.name, self.count_all_fields() + 1)
+        result = 'extern const pb_field_t %s_fields[%d];' % (
+            self.name, self.count_all_fields() + 1)
         return result
 
     def fields_definition(self):
-        result = 'const pb_field_t %s_fields[%d] = {\n' % (self.name, self.count_all_fields() + 1)
+        result = 'const pb_field_t %s_fields[%d] = {\n' % (
+            self.name, self.count_all_fields() + 1)
 
         prev = None
         for field in self.ordered_fields:
@@ -519,6 +534,7 @@ def parse_file(fdesc):
     enums = []
     messages = []
     extensions = []
+    package = fdesc.package.split('.')[-1]
 
     if fdesc.package:
         base_name = Names(fdesc.package.split('.'))
@@ -526,12 +542,12 @@ def parse_file(fdesc):
         base_name = Names()
 
     for enum in fdesc.enum_type:
-        enums.append(Enum(enum))
+        enums.append(Enum(enum, package))
 
     for names, message in iterate_messages(fdesc, base_name):
-        messages.append(Message(names, message))
+        messages.append(Message(names, message, package))
         for enum in message.enum_type:
-            enums.append(Enum(enum))
+            enums.append(Enum(enum, package))
 
     for names, extension in iterate_extensions(fdesc, base_name):
         extensions.append(ExtensionField(names, extension))
@@ -564,7 +580,7 @@ def generate_source(dependencies, headername, enums, messages, extensions):
 def build_element(element):
     '''Generate content for a source file.'''
 
-    yield 'package %s;\n\n' % Globals.output_package
+    yield 'package %s%s;\n\n' % (Globals.output_package, element.package)
     yield '/* Automatically generated VO entity code */\n'
     yield '/* Generated by %s at %s */\n\n' % (vo_version, time.asctime())
     if isinstance(element, Message):
@@ -596,8 +612,6 @@ def build_source(response, results):
 # ---------------------------------------------------------------------------
 #                         Command line interface
 # ---------------------------------------------------------------------------
-
-import os.path
 
 def process_file(filename, fdesc):
     '''Process a single file.
@@ -639,7 +653,8 @@ def main_plugin():
 
     import sys
     if sys.platform == "win32":
-        import os, msvcrt
+        import os
+        import msvcrt
         # Set stdin and stdout to binary mode
         msvcrt.setmode(sys.stdin.fileno(), os.O_BINARY)
         msvcrt.setmode(sys.stdout.fileno(), os.O_BINARY)
@@ -648,23 +663,6 @@ def main_plugin():
     data = sys.stdin.read()
     request = plugin_pb2.CodeGeneratorRequest.FromString(data)
 
-    # data = open("hello", "r")
-    # request = plugin_pb2.CodeGeneratorRequest.FromString(data.read())
-
-    # data = sys.stdin.read()
-    # target = open("hello", "w")
-    # target.write(data)
-    # target.flush()
-    # target.close()
-    # request = plugin_pb2.CodeGeneratorRequest.FromString(data)
-
-    try:
-        # Versions of Python prior to 2.7.3 do not support unicode
-        # input to shlex.split(). Try to convert to str if possible.
-        params = str(request.parameter)
-    except UnicodeEncodeError:
-        params = request.parameter
-
     response = plugin_pb2.CodeGeneratorResponse()
 
     for filename in request.file_to_generate:
@@ -672,10 +670,6 @@ def main_plugin():
             if fdesc.name == filename:
                 results = process_file(filename, fdesc)
                 build_source(response, results)
-
-                # f = response.file.add()
-                # f.name = results['sourcename']
-                # f.content = results['sourcedata']
 
     sys.stdout.write(response.SerializeToString())
 
